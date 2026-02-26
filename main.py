@@ -1,60 +1,68 @@
+import os
+import shutil
+import uvicorn
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pdf2docx import Converter
-import os
-import shutil
-import uvicorn
 
-app = FastAPI(title="Lowaconvert Private API")
+app = FastAPI(title="Lowaconvert Official API")
 
-# --- CONFIGURATION CORS POUR ACCEPTER TOUTES LES ORIGINES ---
+# 1. ACTIVATION DU CORS (Indispensable pour lier ton site à Railway)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Autorise ton site web à communiquer avec l'API
+    allow_origins=["*"],  # Autorise ton interface web à appeler l'API
     allow_credentials=True,
-    allow_methods=["*"],  # Autorise POST, GET, etc.
-    allow_headers=["*"],  # Autorise tous les en-têtes
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
+# 2. ROUTE DE VÉRIFICATION (Affiche si le serveur est en ligne)
 @app.get("/")
-async def root():
-    return {"message": "Le moteur Lowaconvert est opérationnel sur Railway !"}
+async def health_check():
+    return {
+        "status": "online",
+        "service": "Lowaconvert API",
+        "message": "Le moteur est prêt pour la conversion"
+    }
 
+# 3. CONVERSION PDF VERS WORD
 @app.post("/pdf-to-word")
 async def pdf_to_word(file: UploadFile = File(...)):
-    # Vérification de l'extension
+    # Vérification stricte du format
     if not file.filename.lower().endswith('.pdf'):
-        raise HTTPException(status_code=400, detail="Le fichier doit être un PDF")
+        raise HTTPException(status_code=400, detail="Veuillez envoyer un fichier PDF uniquement.")
 
-    temp_pdf = f"temp_{file.filename}"
-    output_docx = temp_pdf.replace(".pdf", ".docx")
+    # Chemins temporaires pour Railway
+    input_path = f"temp_{file.filename}"
+    output_path = input_path.replace(".pdf", ".docx")
 
     try:
-        # Sauvegarde temporaire du PDF
-        with open(temp_pdf, "wb") as buffer:
+        # Sauvegarde du fichier reçu
+        with open(input_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        # Conversion réelle via la bibliothèque pdf2docx
-        cv = Converter(temp_pdf)
-        cv.convert(output_docx)
+        # Exécution de la conversion
+        cv = Converter(input_path)
+        cv.convert(output_path)
         cv.close()
         
+        # Envoi du fichier converti au navigateur
         return FileResponse(
-            output_docx, 
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            filename=os.path.basename(output_docx)
+            output_path, 
+            filename=os.path.basename(output_path),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"error": f"Erreur lors de la conversion : {str(e)}"}
+    finally:
+        # Nettoyage (optionnel sur Railway qui réinitialise les instances)
+        if os.path.exists(input_path):
+            pass 
 
-@app.post("/word-to-pdf")
-async def word_to_pdf(file: UploadFile = File(...)):
-    # Note : word-to-pdf nécessite souvent LibreOffice installé sur le serveur.
-    # Cette route est prête pour l'envoi de fichier.
-    return {"message": "Route word-to-pdf configurée. Prête pour déploiement avancé."}
-
+# 4. CONFIGURATION DU PORT POUR RAILWAY
 if __name__ == "__main__":
-    # Railway utilise la variable d'environnement PORT (souvent 8000 ou 8080)
-    port = int(os.environ.get("PORT", 8000))
+    # Railway utilise la variable d'environnement PORT, par défaut 8000 ou 8080
+    port = int(os.environ.get("PORT", 8080)) 
     uvicorn.run(app, host="0.0.0.0", port=port)
+
