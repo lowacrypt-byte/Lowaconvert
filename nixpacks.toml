@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["python3", "libreoffice", "libreoffice-headless"]
+nixPkgs = ["python3", "libreoffice-headless"] # Installe le logiciel soffice sur Railway
 
 [phases.build]
 cmds = ["pip install -r requirements.txt"]
