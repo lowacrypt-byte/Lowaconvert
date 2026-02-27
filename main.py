@@ -5,28 +5,26 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-# Bibliothèque pour PDF -> Word
+# Moteurs de conversion
 from pdf2docx import Converter
-
-# Bibliothèque Premium pour Word -> PDF (Rendu fidèle)
 from spire.doc import Document, FileFormat
 
 app = FastAPI(title="Lowaconvert Premium API")
 
-# Configuration CORS pour ton interface Light Mode
+# --- PROTECTION CORS : Règle l'erreur 'Connexion refusée' ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Autorise toutes les sources (Frontend)
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Autorise POST, GET, etc.
+    allow_headers=["*"],  # Autorise tous les en-têtes
 )
 
 @app.get("/")
-async def status():
-    return {"status": "online", "engine": "Spire.Doc Engine"}
+async def health():
+    return {"status": "online", "message": "Moteur Lowaconvert prêt"}
 
-# --- ROUTE 1 : PDF VERS WORD ---
+# --- ROUTE : PDF VERS WORD ---
 @app.post("/pdf-to-word")
 async def pdf_to_word(file: UploadFile = File(...)):
     if not file.filename.lower().endswith('.pdf'):
@@ -47,7 +45,7 @@ async def pdf_to_word(file: UploadFile = File(...)):
     except Exception as e:
         return {"error": f"Erreur PDF-to-Word: {str(e)}"}
 
-# --- ROUTE 2 : WORD VERS PDF (Méthode de rendu visuel complet) ---
+# --- ROUTE : WORD VERS PDF (Haute Fidélité) ---
 @app.post("/word-to-pdf")
 async def word_to_pdf(file: UploadFile = File(...)):
     if not file.filename.lower().endswith(('.docx', '.doc')):
@@ -57,33 +55,26 @@ async def word_to_pdf(file: UploadFile = File(...)):
     output_path = input_path.rsplit('.', 1)[0] + ".pdf"
     
     try:
-        # 1. Sauvegarde du fichier uploadé
+        # Sauvegarde temporaire
         with open(input_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        # 2. Utilisation du moteur de rendu Spire.Doc
-        # Ce moteur convertit le document en respectant la mise en page (images, tableaux)
+        # Rendu fidèle avec Spire.Doc (évite l'erreur libreoffice)
         doc = Document()
         doc.LoadFromFile(input_path)
-        
-        # Sauvegarde directe au format PDF
         doc.SaveToFile(output_path, FileFormat.PDF)
         doc.Close()
         
-        if os.path.exists(output_path):
-            return FileResponse(output_path, filename=f"lowaconvert_{os.path.basename(output_path)}")
-        else:
-            return {"error": "Le moteur n'a pas pu générer le fichier PDF."}
+        return FileResponse(output_path, filename=f"lowaconvert_{os.path.basename(output_path)}")
             
     except Exception as e:
-        # Capture de l'erreur pour éviter le "Failed to fetch"
-        return {"error": f"Erreur de rendu visuel : {str(e)}"}
+        # Retourne l'erreur au Frontend pour affichage propre
+        return {"error": f"Erreur système conversion : {str(e)}"}
     finally:
-        # Nettoyage des fichiers temporaires pour économiser l'espace Railway
-        if os.path.exists(input_path):
-            os.remove(input_path)
+        # Nettoyage automatique des fichiers temporaires
+        if os.path.exists(input_path): os.remove(input_path)
 
 if __name__ == "__main__":
+    # Port dynamique Railway
     port = int(os.environ.get("PORT", 8080))
     uvicorn.run(app, host="0.0.0.0", port=port)
-        
